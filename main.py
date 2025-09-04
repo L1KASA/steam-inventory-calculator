@@ -1,10 +1,12 @@
 import json
 import re
+import time
+
 import requests
 
 
 class SteamInventoryChecker:
-    def __init__(self, steam_id: str, headers: dict[str, str]) -> None:
+    def __init__(self, steam_id: str, headers: dict) -> None:
         self.steam_id = steam_id
         self.session = requests.Session()
         self.session.headers.update(headers)
@@ -20,14 +22,18 @@ class SteamInventoryChecker:
                 return {}
         return {}
 
-    def get_inventory_games(self) -> dict:
+    def _handle_rate_limit(self):
+        print("Rate limit detected. Waiting 30 seconds...")
+        time.sleep(30)
+
+    def get_inventory_games(self, timeout: int = 30) -> dict:
         url = f"https://steamcommunity.com/id/{self.steam_id}/inventory/"
         params = {
             'l': 'russian',
             'count': 1
         }
         try:
-            response = self.session.get(url, params=params, timeout=20)
+            response = self.session.get(url, params=params, timeout=timeout)
             if response.status_code == 200:
                 app_context_data = self._extract_json_from_html(
                     response.text, r'var g_rgAppContextData = (\{.*?\});'
@@ -44,8 +50,12 @@ class SteamInventoryChecker:
                     games_list[context_key] = game_data
 
                 return games_list
+            elif response.status_code == 429:
+                return {}
             else:
-                print(f"HTTP Error: {response.status_code}")
+                print(f"HTTP Error {response.status_code}")
+                self._handle_rate_limit()
+                return {}
         except requests.exceptions.RequestException as e:
             print(f"Network error: {e}")
             return {}
@@ -60,7 +70,13 @@ def main():
     inventory = SteamInventoryChecker(
         steam_id='tempo_218',
         headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Referer': 'https://steamcommunity.com/',
+            'DNT': '1',
         }
     )
 
